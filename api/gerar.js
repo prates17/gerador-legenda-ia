@@ -1,4 +1,4 @@
-// api/gerar.js
+// api/generate.js
 const ALLOWED_METHOD = 'POST';
 const MAX_INPUT_LEN = 400;
 
