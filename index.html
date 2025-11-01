@@ -1,1 +1,222 @@
+<!--
+README RÁPIDO (embutido)
+Projeto: Gerador de Legendas Inteligentes
+Pilha: HTML/CSS/JS (front) + Vercel Serverless (Node 18+) + OpenAI Chat Completions.
+
+Como publicar (resumo):
+1) Crie um repositório com 'index.html' e 'api/generate.js'.
+2) Na Vercel: New Project → importe o repo → Settings > Environment Variables:
+   - OPENAI_API_KEY = sua chave da OpenAI.
+3) Deploy. Teste https://SEU-PROJ.vercel.app e a rota /api/generate (via botão da página).
+Debug:
+- Abra DevTools (F12), veja Console e Network. Mensagens de erro aparecem na UI.
+- Status 401/403: verifique OPENAI_API_KEY. 429: tente novamente depois. 500: veja Logs na Vercel.
+-->
+
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Gerador de Legendas Inteligentes</title>
+  <meta name="description" content="Gere 3 legendas curtas com CTA e hashtags para o seu negócio, usando IA." />
+  <style>
+    :root{
+      --bg:#0b0d10; --card:#101419; --muted:#778; --text:#e8edf2; --accent:#6aa2ff; --danger:#ff6b6b;
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:linear-gradient(180deg,#0b0d10 0%,#0f141b 100%);
+      color:var(--text); font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;
+      display:flex; align-items:center; justify-content:center; padding:24px;
+    }
+    main{
+      width:100%; max-width:860px; background:var(--card); border-radius:var(--radius);
+      padding:28px; box-shadow:0 10px 30px rgba(0,0,0,.35); border:1px solid rgba(255,255,255,.06);
+    }
+    header{margin-bottom:20px}
+    h1{margin:0 0 6px; font-size:clamp(22px,3.6vw,30px); letter-spacing:.2px}
+    p.subtitle{margin:0;color:var(--muted)}
+    form{display:grid; gap:16px; margin-top:18px}
+    .grid{display:grid; gap:12px}
+    @media (min-width:720px){ .grid{grid-template-columns:1fr 1fr} }
+    label{display:block; font-weight:600; margin-bottom:6px}
+    .field{display:flex; flex-direction:column}
+    input,select,textarea{
+      background:#0d1218; color:var(--text); border:1px solid rgba(255,255,255,.08);
+      border-radius:12px; padding:12px 14px; outline:none;
+    }
+    input:focus,select:focus,textarea:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(106,162,255,.15)}
+    textarea{min-height:90px; resize:vertical}
+    .actions{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+    button{
+      border:0; background:var(--accent); color:#0b0d10; padding:12px 16px; border-radius:12px;
+      font-weight:700; cursor:pointer;
+    }
+    button.secondary{background:#1b2532; color:var(--text)}
+    button:disabled{opacity:.6; cursor:not-allowed}
+    .hint{font-size:13px; color:var(--muted)}
+    .error{color:var(--danger); font-weight:600}
+    .output{
+      margin-top:20px; padding:16px; border:1px solid rgba(255,255,255,.08); border-radius:12px;
+      background:#0d1218; white-space:pre-wrap;
+    }
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    footer{margin-top:14px; color:var(--muted); font-size:13px}
+    code.kbd{background:#121720; border:1px solid rgba(255,255,255,.08); padding:2px 6px; border-radius:6px}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Gerador de Legendas Inteligentes</h1>
+      <p class="subtitle">3 legendas curtas, com CTA e 3 hashtags — em segundos.</p>
+    </header>
+
+    <form id="form" novalidate>
+      <div class="grid">
+        <div class="field">
+          <label for="business">Tipo de negócio</label>
+          <input id="business" name="business" placeholder="Ex.: Estúdio de Pilates" autocomplete="organization" required />
+        </div>
+        <div class="field">
+          <label for="goal">Objetivo do post</label>
+          <input id="goal" name="goal" placeholder="Ex.: Vender aula experimental" required />
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="field">
+          <label for="tone">Tom de voz</label>
+          <select id="tone" name="tone" required>
+            <option value="">Selecione…</option>
+            <option>Profissional</option>
+            <option>Amigável</option>
+            <option>Direto e persuasivo</option>
+            <option>Didático</option>
+            <option>Inspirador</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="notes">Observações (opcional)</label>
+          <input id="notes" name="notes" placeholder="Ex.: Citar WhatsApp, focar dor nas costas" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="generateBtn" type="submit">Gerar legendas</button>
+        <button id="copyBtn" type="button" class="secondary" disabled>Copiar</button>
+        <span id="status" class="hint" role="status" aria-live="polite"></span>
+      </div>
+
+      <div class="hint">Dica: seja específico no objetivo. Ex.: “Agendar avaliação gratuita nesta semana”.</div>
+
+      <output id="result" class="output" aria-live="polite" aria-atomic="true"></output>
+      <div id="error" class="error" role="alert" style="display:none"></div>
+    </form>
+
+    <footer>
+      <span>Feito com HTML/CSS/JS + Vercel Functions + OpenAI.</span>
+      <br />
+      <span>Para copiar manualmente: selecione o texto ou use <code class="kbd">Ctrl/Cmd + C</code>.</span>
+    </footer>
+  </main>
+
+  <script>
+    const $ = (sel)=>document.querySelector(sel);
+    const form = $('#form');
+    const generateBtn = $('#generateBtn');
+    const copyBtn = $('#copyBtn');
+    const result = $('#result');
+    const errorBox = $('#error');
+    const statusLine = $('#status');
+
+    function setLoading(loading){
+      generateBtn.disabled = loading;
+      copyBtn.disabled = loading || !result.textContent.trim();
+      statusLine.textContent = loading ? 'Gerando…' : '';
+      if (loading) { result.textContent = ''; errorBox.style.display='none'; }
+    }
+
+    function validateInputs(data){
+      const required = ['business','goal','tone'];
+      for (const k of required){
+        if (!data[k] || !String(data[k]).trim()){
+          throw new Error('Preencha todos os campos obrigatórios.');
+        }
+      }
+      const total = [data.business, data.goal, data.tone, data.notes||''].join(' ').length;
+      if (total > 400){ throw new Error('Texto muito longo. Resuma as observações.'); }
+    }
+
+    async function generateCaptions(payload){
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok){
+        let msg = 'Erro na geração. Verifique o backend.';
+        try { const j = await res.json(); if (j && j.error){ msg = j.error; } } catch {}
+        const err = new Error(msg);
+        err.status = res.status;
+        throw err;
+      }
+      return res.json();
+    }
+
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(form);
+      const data = {
+        business: fd.get('business'),
+        goal: fd.get('goal'),
+        tone: fd.get('tone'),
+        notes: fd.get('notes')
+      };
+      try{
+        validateInputs(data);
+      }catch(err){
+        errorBox.textContent = err.message;
+        errorBox.style.display = 'block';
+        return;
+      }
+
+      setLoading(true);
+      try{
+        const { text } = await generateCaptions(data);
+        result.textContent = text.trim();
+        copyBtn.disabled = !text;
+        statusLine.textContent = 'Pronto.';
+      }catch(err){
+        console.error(err);
+        errorBox.textContent = err.message || 'Erro na geração. Verifique o backend.';
+        errorBox.style.display = 'block';
+      }finally{
+        setLoading(false);
+      }
+    });
+
+    copyBtn.addEventListener('click', async ()=>{
+      const text = result.textContent.trim();
+      if (!text) return;
+      try{
+        await navigator.clipboard.writeText(text);
+        statusLine.textContent = 'Copiado para a área de transferência.';
+        copyBtn.focus();
+      }catch{
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(result);
+        sel.removeAllRanges(); sel.addRange(range);
+        try{ document.execCommand('copy'); statusLine.textContent='Copiado.'; }
+        catch{ statusLine.textContent='Selecione e copie manualmente.'; }
+        sel.removeAllRanges();
+      }
+    });
+  </script>
+</body>
+</html>
 
